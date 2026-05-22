@@ -78,7 +78,8 @@ def analyser_btc_5min():
     else:
         prix_btc_str = str(round(prix_btc, 2))
     print("Prix BTC: $" + prix_btc_str)
-    marches_btc = get_marches(20, "BTC up or down 5")
+    marches_btc = get_marches(20, "BTC up or down 5m")
+    marches_btc = [m for m in marches_btc if "BTC" in m.get("question","") and ("5m" in m.get("question","") or "5 m" in m.get("question",""))]
     message_telegram = "BTC 5 MIN\nPrix actuel: $" + prix_btc_str + "\n\n"
     trouve = False
     for marche in marches_btc:
