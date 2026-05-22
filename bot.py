@@ -2,11 +2,11 @@ import anthropic
 import requests
 import json
 import time
+import os
 
-ANTHROPIC_API_KEY = "METTRE_CLE_ICI"
-POLYMARKET_API_KEY = "METTRE_CLE_ICI"
-WALLET_ADDRESS = "METTRE_ADRESSE_ICI"
-
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+POLYMARKET_API_KEY = os.environ.get("POLYMARKET_API_KEY", "")
+WALLET_ADDRESS = os.environ.get("WALLET_ADDRESS", "")
 
 NB_MARCHES_A_ANALYSER = 5
 INTERVALLE_MINUTES = 60
