@@ -7,9 +7,20 @@ import os
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 POLYMARKET_API_KEY = os.environ.get("POLYMARKET_API_KEY", "")
 WALLET_ADDRESS = os.environ.get("WALLET_ADDRESS", "")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 NB_MARCHES_A_ANALYSER = 5
 INTERVALLE_MINUTES = 60
+
+def envoyer_telegram(message):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage"
+    try:
+        requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": message}, timeout=10)
+    except Exception as e:
+        print("Erreur Telegram: " + str(e))
 
 def get_marches_polymarket():
     url = "https://gamma-api.polymarket.com/markets"
@@ -46,21 +57,6 @@ def analyser_marche_avec_claude(marche):
         print("Erreur Claude: " + str(e))
         return None
 
-def afficher_analyse(marche, analyse):
-    print("\n" + "="*50)
-    print("MARCHE: " + marche.get("question", "")[:80])
-    try:
-        prix = json.loads(marche.get("outcomePrices", '["?","?"]'))
-        print("Prix YES: " + str(prix[0]) + " | Prix NO: " + str(prix[1]))
-    except Exception:
-        print("Prix: inconnu")
-    if analyse:
-        print("Recommandation: " + analyse["recommandation"])
-        print("Confiance: " + analyse["confiance"])
-        print("Raison: " + analyse["raison"])
-    else:
-        print("Analyse impossible")
-
 def lancer_analyse():
     print("\n" + "="*50)
     print("Nouvelle analyse lancee!")
@@ -68,15 +64,43 @@ def lancer_analyse():
     marches = get_marches_polymarket()
     if not marches:
         print("Aucun marche actif trouve.")
-    else:
-        print(str(len(marches)) + " marches trouves\n")
-        for marche in marches:
-            analyse = analyser_marche_avec_claude(marche)
-            afficher_analyse(marche, analyse)
+        return
+    print(str(len(marches)) + " marches trouves\n")
+    message_telegram = "🤖 ANALYSE POLYMARKET\n\n"
+    for marche in marches:
+        analyse = analyser_marche_avec_claude(marche)
+        question = marche.get("question", "")[:80]
+        try:
+            prix = json.loads(marche.get("outcomePrices", '["?","?"]'))
+            prix_yes = str(prix[0])
+            prix_no = str(prix[1])
+        except Exception:
+            prix_yes = "?"
+            prix_no = "?"
+        print("\n" + "="*50)
+        print("MARCHE: " + question)
+        print("Prix YES: " + prix_yes + " | Prix NO: " + prix_no)
+        if analyse:
+            print("Recommandation: " + analyse["recommandation"])
+            print("Confiance: " + analyse["confiance"])
+            print("Raison: " + analyse["raison"])
+            if analyse["recommandation"] == "YES":
+                emoji = "✅"
+            elif analyse["recommandation"] == "NO":
+                emoji = "❌"
+            else:
+                emoji = "⏭️"
+            message_telegram += emoji + " " + question + "\n"
+            message_telegram += "YES=" + prix_yes + " NO=" + prix_no + "\n"
+            message_telegram += "Reco: " + analyse["recommandation"] + " (" + analyse["confiance"] + ")\n"
+            message_telegram += "Raison: " + analyse["raison"] + "\n\n"
+        else:
+            print("Analyse impossible")
+    envoyer_telegram(message_telegram)
     print("\nProchaine analyse dans " + str(INTERVALLE_MINUTES) + " minutes...")
 
+envoyer_telegram("🚀 Bot Polymarket demarre! Analyses toutes les " + str(INTERVALLE_MINUTES) + " minutes.")
 print("Bot Polymarket demarre en mode automatique!")
-print("Analyse toutes les " + str(INTERVALLE_MINUTES) + " minutes\n")
 
 while True:
     lancer_analyse()
