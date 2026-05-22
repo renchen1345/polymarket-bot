@@ -23,11 +23,9 @@ def envoyer_telegram(message):
     except Exception as e:
         print("Erreur Telegram: " + str(e))
 
-def get_marches(limite, mot_cle=None):
+def get_marches(limite):
     url = "https://gamma-api.polymarket.com/markets"
     params = {"active": "true", "closed": "false", "limit": str(limite)}
-    if mot_cle:
-        params["search"] = mot_cle
     try:
         r = requests.get(url, params=params, timeout=10)
         return r.json()
@@ -35,15 +33,21 @@ def get_marches(limite, mot_cle=None):
         print("Erreur: " + str(e))
         return []
 
-def get_marches_par_slug(slug):
-    url = "https://gamma-api.polymarket.com/markets"
-    params = {"active": "true", "closed": "false", "slug": slug}
+def get_marche_btc_5min():
+    url = "https://gamma-api.polymarket.com/events"
+    params = {"series_slug": "btc-up-or-down-5m", "active": "true", "closed": "false", "limit": "1"}
     try:
         r = requests.get(url, params=params, timeout=10)
-        return r.json()
+        data = r.json()
+        if data and len(data) > 0:
+            event = data[0]
+            markets = event.get("markets", [])
+            if markets:
+                return markets[0]
+        return None
     except Exception as e:
-        print("Erreur: " + str(e))
-        return []
+        print("Erreur BTC: " + str(e))
+        return None
 
 def get_prix_btc():
     try:
@@ -52,18 +56,9 @@ def get_prix_btc():
     except Exception:
         return None
 
-def analyser_marche_avec_claude(marche):
+def analyser_marche_avec_claude(question, prix_yes, prix_no, contexte=""):
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    question = marche.get("question", "")
-    prix_raw = marche.get("outcomePrices", '["?", "?"]')
-    try:
-        prix = json.loads(prix_raw)
-        prix_yes = str(prix[0])
-        prix_no = str(prix[1])
-    except Exception:
-        prix_yes = "?"
-        prix_no = "?"
-    prompt = "Tu es un expert en marches de prediction. Analyse ce marche: " + question + ". Prix YES=" + prix_yes + " Prix NO=" + prix_no + ". Reponds UNIQUEMENT avec ce JSON sans rien autour, sans backticks: {\"recommandation\": \"YES\", \"confiance\": \"LOW\", \"raison\": \"explication courte\"}. Remplace les valeurs. recommandation = YES ou NO ou SKIP. confiance = LOW ou MEDIUM ou HIGH."
+    prompt = "Tu es un expert en marches de prediction. Analyse ce marche: " + question + ". " + contexte + " Prix YES=" + prix_yes + " Prix NO=" + prix_no + ". Reponds UNIQUEMENT avec ce JSON sans rien autour, sans backticks: {\"recommandation\": \"YES\", \"confiance\": \"LOW\", \"raison\": \"explication courte\"}. Remplace les valeurs. recommandation = YES ou NO ou SKIP. confiance = LOW ou MEDIUM ou HIGH."
     try:
         message = client.messages.create(
             model="claude-sonnet-4-6",
@@ -87,36 +82,37 @@ def analyser_btc_5min():
     else:
         prix_btc_str = str(round(prix_btc, 2))
     print("Prix BTC: $" + prix_btc_str)
-    marches_btc = get_marches_par_slug("btc-updown-5m")
-    message_telegram = "BTC 5 MIN\nPrix: $" + prix_btc_str + "\n\n"
-    if not marches_btc:
-        print("Aucun marche BTC 5min trouve")
-        message_telegram += "Aucun marche BTC 5min trouve"
-        envoyer_telegram(message_telegram)
+    marche = get_marche_btc_5min()
+    if not marche:
+        print("Aucun marche BTC 5min actif trouve")
         return
-    for marche in marches_btc:
-        question = marche.get("question", "")
-        analyse = analyser_marche_avec_claude(marche)
-        try:
-            prix = json.loads(marche.get("outcomePrices", '["?","?"]'))
-            prix_yes = str(prix[0])
-            prix_no = str(prix[1])
-        except Exception:
-            prix_yes = "?"
-            prix_no = "?"
-        print("MARCHE: " + question[:80])
-        if analyse:
-            if analyse["recommandation"] == "YES":
-                emoji = "UP"
-            elif analyse["recommandation"] == "NO":
-                emoji = "DOWN"
-            else:
-                emoji = "SKIP"
-            print("Signal: " + emoji)
-            message_telegram += emoji + " " + question[:60] + "\n"
-            message_telegram += "YES=" + prix_yes + " NO=" + prix_no + "\n"
-            message_telegram += "Confiance: " + analyse["confiance"] + "\n"
-            message_telegram += "Raison: " + analyse["raison"] + "\n\n"
+    question = marche.get("question", "")
+    try:
+        prix = json.loads(marche.get("outcomePrices", '["?","?"]'))
+        prix_yes = str(prix[0])
+        prix_no = str(prix[1])
+    except Exception:
+        prix_yes = "?"
+        prix_no = "?"
+    print("MARCHE: " + question)
+    contexte = "Le prix actuel du BTC est $" + prix_btc_str + ". Ce marche se resout dans 5 minutes."
+    analyse = analyser_marche_avec_claude(question, prix_yes, prix_no, contexte)
+    message_telegram = "BTC 5 MIN\nPrix: $" + prix_btc_str + "\n\n"
+    message_telegram += question + "\n"
+    message_telegram += "UP=" + prix_yes + " DOWN=" + prix_no + "\n"
+    if analyse:
+        if analyse["recommandation"] == "YES":
+            signal = "UP"
+        elif analyse["recommandation"] == "NO":
+            signal = "DOWN"
+        else:
+            signal = "SKIP"
+        print("Signal: " + signal + " Confiance: " + analyse["confiance"])
+        message_telegram += "Signal: " + signal + "\n"
+        message_telegram += "Confiance: " + analyse["confiance"] + "\n"
+        message_telegram += "Raison: " + analyse["raison"]
+    else:
+        message_telegram += "Analyse impossible"
     envoyer_telegram(message_telegram)
 
 def analyser_general():
@@ -129,7 +125,6 @@ def analyser_general():
         return
     message_telegram = "ANALYSE GENERALE 20 MARCHES\n\n"
     for marche in marches:
-        analyse = analyser_marche_avec_claude(marche)
         question = marche.get("question", "")[:80]
         try:
             prix = json.loads(marche.get("outcomePrices", '["?","?"]'))
@@ -138,6 +133,7 @@ def analyser_general():
         except Exception:
             prix_yes = "?"
             prix_no = "?"
+        analyse = analyser_marche_avec_claude(question, prix_yes, prix_no)
         print("MARCHE: " + question)
         if analyse:
             if analyse["recommandation"] == "YES":
