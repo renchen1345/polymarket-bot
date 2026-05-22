@@ -83,8 +83,7 @@ def analyser_btc_5min():
     message_telegram = "₿ ANALYSE BTC 5 MIN\nPrix actuel: $" + str(round(prix_btc, 2)) + "\n\n"
     for marche in marches_btc:
         question = marche.get("question", "")
-        if "5" not in question and "minute" not in question.lower() and "min" not in question.lower():
-            continue
+        if "btc" not in question.lower() and "up" not in question.lower():
         analyse = analyser_marche_avec_claude(marche)
         try:
             prix = json.loads(marche.get("outcomePrices", '["?","?"]'))
