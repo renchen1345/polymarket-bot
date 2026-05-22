@@ -74,16 +74,15 @@ def analyser_btc_5min():
     prix_btc = get_prix_btc()
     if not prix_btc:
         print("Impossible de recuperer le prix BTC")
-        return
-    print("Prix BTC actuel: $" + str(prix_btc))
-    marches_btc = get_marches(5, "BTC")
-    if not marches_btc:
-        print("Aucun marche BTC trouve")
-        return
-    message_telegram = "₿ ANALYSE BTC 5 MIN\nPrix actuel: $" + str(round(prix_btc, 2)) + "\n\n"
+        prix_btc_str = "inconnu"
+    else:
+        prix_btc_str = str(round(prix_btc, 2))
+    print("Prix BTC: $" + prix_btc_str)
+    marches_btc = get_marches(20, "BTC up")
+    message_telegram = "BTC 5 MIN\nPrix actuel: $" + prix_btc_str + "\n\n"
+    trouve = False
     for marche in marches_btc:
         question = marche.get("question", "")
-        if "btc" not in question.lower() and "up" not in question.lower():
         analyse = analyser_marche_avec_claude(marche)
         try:
             prix = json.loads(marche.get("outcomePrices", '["?","?"]'))
@@ -94,26 +93,31 @@ def analyser_btc_5min():
             prix_no = "?"
         print("MARCHE: " + question[:80])
         if analyse:
+            trouve = True
             if analyse["recommandation"] == "YES":
-                emoji = "✅ UP"
+                emoji = "UP"
             elif analyse["recommandation"] == "NO":
-                emoji = "❌ DOWN"
+                emoji = "DOWN"
             else:
-                emoji = "⏭️ SKIP"
+                emoji = "SKIP"
             print("Signal: " + emoji)
-            print("Confiance: " + analyse["confiance"])
             message_telegram += emoji + " " + question[:60] + "\n"
             message_telegram += "YES=" + prix_yes + " NO=" + prix_no + "\n"
             message_telegram += "Confiance: " + analyse["confiance"] + "\n"
             message_telegram += "Raison: " + analyse["raison"] + "\n\n"
+    if not trouve:
+        message_telegram += "Aucun marche BTC 5min trouve\n"
     envoyer_telegram(message_telegram)
 
-def analyser_et_envoyer(marches, titre):
+def analyser_general():
+    print("\n" + "="*50)
+    print("ANALYSE GENERALE 20 MARCHES")
+    print("="*50)
+    marches = get_marches(NB_MARCHES_GENERAUX)
     if not marches:
         print("Aucun marche trouve.")
         return
-    print(str(len(marches)) + " marches trouves\n")
-    message_telegram = "🤖 " + titre + "\n\n"
+    message_telegram = "ANALYSE GENERALE 20 MARCHES\n\n"
     for marche in marches:
         analyse = analyser_marche_avec_claude(marche)
         question = marche.get("question", "")[:80]
@@ -124,40 +128,30 @@ def analyser_et_envoyer(marches, titre):
         except Exception:
             prix_yes = "?"
             prix_no = "?"
-        print("\n" + "="*50)
         print("MARCHE: " + question)
-        print("Prix YES: " + prix_yes + " | Prix NO: " + prix_no)
         if analyse:
-            print("Recommandation: " + analyse["recommandation"])
-            print("Confiance: " + analyse["confiance"])
-            print("Raison: " + analyse["raison"])
             if analyse["recommandation"] == "YES":
-                emoji = "✅"
+                emoji = "YES"
             elif analyse["recommandation"] == "NO":
-                emoji = "❌"
+                emoji = "NO"
             else:
-                emoji = "⏭️"
+                emoji = "SKIP"
+            print("Reco: " + emoji + " Confiance: " + analyse["confiance"])
             message_telegram += emoji + " " + question + "\n"
             message_telegram += "YES=" + prix_yes + " NO=" + prix_no + "\n"
-            message_telegram += "Reco: " + analyse["recommandation"] + " (" + analyse["confiance"] + ")\n"
+            message_telegram += "Confiance: " + analyse["confiance"] + "\n"
             message_telegram += "Raison: " + analyse["raison"] + "\n\n"
         else:
             print("Analyse impossible")
     envoyer_telegram(message_telegram)
 
-envoyer_telegram("🚀 Bot Polymarket demarre!\n📊 20 marches generaux toutes les 60 min\n₿ BTC 5 min toutes les 5 min")
+envoyer_telegram("Bot Polymarket demarre!\n20 marches toutes les 60 min\nBTC 5min toutes les 5 min")
 print("Bot Polymarket demarre!")
 
 compteur = 0
 while True:
     analyser_btc_5min()
-
     if compteur % INTERVALLE_GENERAL_MINUTES == 0:
-        print("\n" + "="*50)
-        print("ANALYSE GENERALE - 20 MARCHES")
-        print("="*50)
-        marches = get_marches(NB_MARCHES_GENERAUX)
-        analyser_et_envoyer(marches, "ANALYSE GENERALE 20 MARCHES")
-
+        analyser_general()
     compteur += INTERVALLE_CRYPTO_MINUTES
     time.sleep(INTERVALLE_CRYPTO_MINUTES * 60)
