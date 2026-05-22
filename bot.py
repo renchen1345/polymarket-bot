@@ -37,8 +37,8 @@ def get_marches(limite, mot_cle=None):
 
 def get_prix_btc():
     try:
-        r = requests.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", timeout=5)
-        return float(r.json()["price"])
+        r = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", timeout=5)
+        return float(r.json()["bitcoin"]["usd"])
     except Exception:
         return None
 
