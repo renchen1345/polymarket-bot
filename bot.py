@@ -35,6 +35,16 @@ def get_marches(limite, mot_cle=None):
         print("Erreur: " + str(e))
         return []
 
+def get_marches_par_slug(slug):
+    url = "https://gamma-api.polymarket.com/markets"
+    params = {"active": "true", "closed": "false", "slug": slug}
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        return r.json()
+    except Exception as e:
+        print("Erreur: " + str(e))
+        return []
+
 def get_prix_btc():
     try:
         r = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", timeout=5)
@@ -73,15 +83,17 @@ def analyser_btc_5min():
     print("="*50)
     prix_btc = get_prix_btc()
     if not prix_btc:
-        print("Impossible de recuperer le prix BTC")
         prix_btc_str = "inconnu"
     else:
         prix_btc_str = str(round(prix_btc, 2))
     print("Prix BTC: $" + prix_btc_str)
-    marches_btc = get_marches(20, "BTC up or down 5m")
-    marches_btc = [m for m in marches_btc if "BTC" in m.get("question","") and ("5m" in m.get("question","") or "5 m" in m.get("question",""))]
-    message_telegram = "BTC 5 MIN\nPrix actuel: $" + prix_btc_str + "\n\n"
-    trouve = False
+    marches_btc = get_marches_par_slug("btc-updown-5m")
+    message_telegram = "BTC 5 MIN\nPrix: $" + prix_btc_str + "\n\n"
+    if not marches_btc:
+        print("Aucun marche BTC 5min trouve")
+        message_telegram += "Aucun marche BTC 5min trouve"
+        envoyer_telegram(message_telegram)
+        return
     for marche in marches_btc:
         question = marche.get("question", "")
         analyse = analyser_marche_avec_claude(marche)
@@ -94,7 +106,6 @@ def analyser_btc_5min():
             prix_no = "?"
         print("MARCHE: " + question[:80])
         if analyse:
-            trouve = True
             if analyse["recommandation"] == "YES":
                 emoji = "UP"
             elif analyse["recommandation"] == "NO":
@@ -106,8 +117,6 @@ def analyser_btc_5min():
             message_telegram += "YES=" + prix_yes + " NO=" + prix_no + "\n"
             message_telegram += "Confiance: " + analyse["confiance"] + "\n"
             message_telegram += "Raison: " + analyse["raison"] + "\n\n"
-    if not trouve:
-        message_telegram += "Aucun marche BTC 5min trouve\n"
     envoyer_telegram(message_telegram)
 
 def analyser_general():
